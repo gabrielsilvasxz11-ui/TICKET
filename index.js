@@ -5,125 +5,121 @@ const {
   StringSelectMenuBuilder,
   EmbedBuilder,
   ChannelType,
-  PermissionsBitField,
-  REST,
-  Routes,
-  SlashCommandBuilder
+  PermissionsBitField
 } = require('discord.js');
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// pega tudo do Railway
 const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
+
+// cargos via Railway (separados por vírgula)
 const CARGOS = process.env.CARGOS?.split(',') || [];
 
-// comando com seleção de cargos
-const commands = [
-  new SlashCommandBuilder()
-    .setName('suporte')
-    .setDescription('Abrir painel de atendimento')
-    .addRoleOption(option =>
-      option.setName('cargo1').setDescription('Cargo de atendimento').setRequired(false))
-    .addRoleOption(option =>
-      option.setName('cargo2').setDescription('Cargo de atendimento').setRequired(false))
-    .addRoleOption(option =>
-      option.setName('cargo3').setDescription('Cargo de atendimento').setRequired(false))
-    .toJSON()
-];
-
-const rest = new REST({ version: '10' }).setToken(TOKEN);
-
-(async () => {
-  await rest.put(
-    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-    { body: commands }
-  );
-})();
-
 client.once('ready', () => {
-  console.log('Bot online!');
+  console.log(`Bot online!`);
+});
+
+client.on('messageCreate', async message => {
+  if (message.author.bot) return;
+
+  if (message.content === '!painel') {
+
+    const embed = new EmbedBuilder()
+      .setTitle('🎫 Atendimento via Tickets')
+      .setDescription(
+        'Para obter atendimento abra um ticket selecionando uma opção no menu abaixo.\n\nFique à vontade para escolher uma opção de acordo com a necessidade.'
+      )
+      .setColor('#2b2d31')
+      .setImage('COLE_AQUI_LINK_DA_LOGO');
+
+    const menu = new StringSelectMenuBuilder()
+      .setCustomId('tickets')
+      .setPlaceholder('Selecione uma opção')
+      .addOptions([
+        {
+          label: 'Suporte',
+          emoji: { name: 'suporte~1', id: 'ID_EMOJI_SUPORTE' },
+          value: 'suporte'
+        },
+        {
+          label: 'Evento',
+          emoji: { name: 'evento9', id: 'ID_EMOJI_EVENTO' },
+          value: 'evento'
+        },
+        {
+          label: 'Mediador',
+          emoji: { name: 'mediador', id: 'ID_EMOJI_MEDIADOR' },
+          value: 'mediador'
+        },
+        {
+          label: 'Reembolso',
+          emoji: '💸',
+          value: 'reembolso'
+        },
+        {
+          label: 'Divulgação',
+          emoji: { name: 'easyyyyyfoguete', id: 'ID_EMOJI_DIVULGACAO' },
+          value: 'divulgacao'
+        }
+      ]);
+
+    const row = new ActionRowBuilder().addComponents(menu);
+
+    await message.channel.send({
+      embeds: [embed],
+      components: [row]
+    });
+  }
 });
 
 client.on('interactionCreate', async interaction => {
 
-  if (interaction.isChatInputCommand()) {
-    if (interaction.commandName === 'suporte') {
+  if (!interaction.isStringSelectMenu()) return;
 
-      // pega cargos escolhidos
-      const cargosSelecionados = [
-        interaction.options.getRole('cargo1'),
-        interaction.options.getRole('cargo2'),
-        interaction.options.getRole('cargo3')
-      ].filter(Boolean);
+  if (interaction.customId === 'tickets') {
 
-      const embed = new EmbedBuilder()
-        .setTitle('🎫 Atendimento via Tickets')
-        .setDescription('Abra um ticket selecionando uma opção abaixo.')
-        .setColor('#2b2d31');
+    const escolha = interaction.values[0];
+    const guild = interaction.guild;
 
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId('tickets')
-        .setPlaceholder('Selecione uma opção')
-        .addOptions([
-          { label: 'Suporte', value: 'suporte', emoji: '🛠️' },
-          { label: 'Evento', value: 'evento', emoji: '🎉' },
-          { label: 'Mediador', value: 'mediador', emoji: '🧑‍⚖️' },
-          { label: 'Reembolso', value: 'reembolso', emoji: '💸' },
-          { label: 'Divulgação', value: 'divulgacao', emoji: '📢' }
-        ]);
+    const nomeCanal = `ticket-${escolha}-${interaction.user.username}`;
 
-      const row = new ActionRowBuilder().addComponents(menu);
+    let permissoes = [
+      {
+        id: guild.id,
+        deny: [PermissionsBitField.Flags.ViewChannel],
+      },
+      {
+        id: interaction.user.id,
+        allow: [PermissionsBitField.Flags.ViewChannel],
+      }
+    ];
 
-      await interaction.reply({
-        embeds: [embed],
-        components: [row]
+    // cargos do Railway
+    CARGOS.forEach(cargo => {
+      permissoes.push({
+        id: cargo,
+        allow: [PermissionsBitField.Flags.ViewChannel]
       });
+    });
 
-      // salva cargos temporariamente
-      client.cargosAtendimento = cargosSelecionados.map(c => c.id);
-    }
-  }
+    const canal = await guild.channels.create({
+      name: nomeCanal,
+      type: ChannelType.GuildText,
+      permissionOverwrites: permissoes
+    });
 
-  if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'tickets') {
+    await canal.send(`🎫 | ${interaction.user}, seu ticket foi criado! Aguarde atendimento.`);
 
-      const guild = interaction.guild;
-
-      let permissoes = [
-        {
-          id: guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel],
-        },
-        {
-          id: interaction.user.id,
-          allow: [PermissionsBitField.Flags.ViewChannel],
-        }
-      ];
-
-      (client.cargosAtendimento || []).forEach(cargo => {
-        permissoes.push({
-          id: cargo,
-          allow: [PermissionsBitField.Flags.ViewChannel]
-        });
-      });
-
-      const canal = await guild.channels.create({
-        name: `ticket-${interaction.user.username}`,
-        type: ChannelType.GuildText,
-        permissionOverwrites: permissoes
-      });
-
-      await canal.send(`🎫 | ${interaction.user}, aguarde atendimento.`);
-
-      await interaction.reply({
-        content: `Ticket criado: ${canal}`,
-        ephemeral: true
-      });
-    }
+    await interaction.reply({
+      content: `✅ Ticket criado: ${canal}`,
+      ephemeral: true
+    });
   }
 
 });
