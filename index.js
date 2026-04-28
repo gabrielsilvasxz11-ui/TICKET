@@ -11,81 +11,69 @@ const {
   SlashCommandBuilder
 } = require('discord.js');
 
-const config = require('./config.json');
-
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-// REGISTRAR COMANDO /suporte
+// pega tudo do Railway
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
+const CARGOS = process.env.CARGOS?.split(',') || [];
+
+// comando com seleção de cargos
 const commands = [
   new SlashCommandBuilder()
     .setName('suporte')
     .setDescription('Abrir painel de atendimento')
+    .addRoleOption(option =>
+      option.setName('cargo1').setDescription('Cargo de atendimento').setRequired(false))
+    .addRoleOption(option =>
+      option.setName('cargo2').setDescription('Cargo de atendimento').setRequired(false))
+    .addRoleOption(option =>
+      option.setName('cargo3').setDescription('Cargo de atendimento').setRequired(false))
     .toJSON()
 ];
 
-const rest = new REST({ version: '10' }).setToken(config.token);
+const rest = new REST({ version: '10' }).setToken(TOKEN);
 
 (async () => {
-  try {
-    await rest.put(
-      Routes.applicationGuildCommands(config.clientId, config.guildId),
-      { body: commands }
-    );
-    console.log('Comando registrado!');
-  } catch (error) {
-    console.error(error);
-  }
+  await rest.put(
+    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+    { body: commands }
+  );
 })();
 
 client.once('ready', () => {
-  console.log(`Logado como ${client.user.tag}`);
+  console.log('Bot online!');
 });
 
 client.on('interactionCreate', async interaction => {
 
-  // COMANDO
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'suporte') {
 
+      // pega cargos escolhidos
+      const cargosSelecionados = [
+        interaction.options.getRole('cargo1'),
+        interaction.options.getRole('cargo2'),
+        interaction.options.getRole('cargo3')
+      ].filter(Boolean);
+
       const embed = new EmbedBuilder()
         .setTitle('🎫 Atendimento via Tickets')
-        .setDescription(
-          'Para obter atendimento abra um ticket selecionando uma opção no menu abaixo.\n\nFique à vontade para escolher uma opção de acordo com a necessidade.'
-        )
-        .setColor('#2b2d31')
-        .setImage('COLE_LINK_DA_LOGO_AQUI');
+        .setDescription('Abra um ticket selecionando uma opção abaixo.')
+        .setColor('#2b2d31');
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId('tickets')
         .setPlaceholder('Selecione uma opção')
         .addOptions([
-          {
-            label: 'Suporte',
-            emoji: { name: 'suporte~1', id: 'ID_EMOJI_SUPORTE' },
-            value: 'suporte'
-          },
-          {
-            label: 'Evento',
-            emoji: { name: 'evento9', id: 'ID_EMOJI_EVENTO' },
-            value: 'evento'
-          },
-          {
-            label: 'Mediador',
-            emoji: { name: 'mediador', id: 'ID_EMOJI_MEDIADOR' },
-            value: 'mediador'
-          },
-          {
-            label: 'Reembolso',
-            emoji: '💸',
-            value: 'reembolso'
-          },
-          {
-            label: 'Divulgação',
-            emoji: { name: 'easyyyyyfoguete', id: 'ID_EMOJI_DIVULGACAO' },
-            value: 'divulgacao'
-          }
+          { label: 'Suporte', value: 'suporte', emoji: '🛠️' },
+          { label: 'Evento', value: 'evento', emoji: '🎉' },
+          { label: 'Mediador', value: 'mediador', emoji: '🧑‍⚖️' },
+          { label: 'Reembolso', value: 'reembolso', emoji: '💸' },
+          { label: 'Divulgação', value: 'divulgacao', emoji: '📢' }
         ]);
 
       const row = new ActionRowBuilder().addComponents(menu);
@@ -94,17 +82,16 @@ client.on('interactionCreate', async interaction => {
         embeds: [embed],
         components: [row]
       });
+
+      // salva cargos temporariamente
+      client.cargosAtendimento = cargosSelecionados.map(c => c.id);
     }
   }
 
-  // MENU
   if (interaction.isStringSelectMenu()) {
     if (interaction.customId === 'tickets') {
 
-      const escolha = interaction.values[0];
       const guild = interaction.guild;
-
-      const canalNome = `ticket-${escolha}-${interaction.user.username}`;
 
       let permissoes = [
         {
@@ -117,7 +104,7 @@ client.on('interactionCreate', async interaction => {
         }
       ];
 
-      config.cargoAtendimento.forEach(cargo => {
+      (client.cargosAtendimento || []).forEach(cargo => {
         permissoes.push({
           id: cargo,
           allow: [PermissionsBitField.Flags.ViewChannel]
@@ -125,17 +112,15 @@ client.on('interactionCreate', async interaction => {
       });
 
       const canal = await guild.channels.create({
-        name: canalNome,
+        name: `ticket-${interaction.user.username}`,
         type: ChannelType.GuildText,
         permissionOverwrites: permissoes
       });
 
-      await canal.send({
-        content: `🎫 | ${interaction.user} seu ticket foi criado!\nUm atendente irá te ajudar em breve.`
-      });
+      await canal.send(`🎫 | ${interaction.user}, aguarde atendimento.`);
 
       await interaction.reply({
-        content: `✅ Ticket criado: ${canal}`,
+        content: `Ticket criado: ${canal}`,
         ephemeral: true
       });
     }
@@ -143,4 +128,4 @@ client.on('interactionCreate', async interaction => {
 
 });
 
-client.login(config.token);
+client.login(TOKEN);
