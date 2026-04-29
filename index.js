@@ -17,12 +17,10 @@ const client = new Client({
 });
 
 const TOKEN = process.env.TOKEN;
-
-// cargos via Railway (separados por vírgula)
 const CARGOS = process.env.CARGOS?.split(',') || [];
 
-client.once('ready', () => {
-  console.log(`Bot online!`);
+client.once('clientReady', () => {
+  console.log('Bot online!');
 });
 
 client.on('messageCreate', async message => {
@@ -100,7 +98,6 @@ client.on('interactionCreate', async interaction => {
       }
     ];
 
-    // cargos do Railway
     CARGOS.forEach(cargo => {
       permissoes.push({
         id: cargo,
